@@ -28,6 +28,12 @@ type HealthcheckServiceConfig struct {
 	ProxyPort  int
 	TlsEnabled bool
 	Boxlite    *blclient.Client
+	// Data disk identity from the infra-injected env keys (hyperdisk LLD §4.2).
+	// Any part missing leaves the healthcheck without a dataDiskRef: only a
+	// complete ref is useful to the API's disk-expansion controller.
+	GCPProjectID       string
+	GCPZone            string
+	RunnerDataDiskName string
 }
 
 type Service struct {
@@ -41,6 +47,9 @@ type Service struct {
 	proxyPort  int
 	tlsEnabled bool
 	boxlite    *blclient.Client
+	// dataDiskRef is nil unless project, zone and disk name are all set, so a
+	// runner without the infra-injected env never sends a partial identity.
+	dataDiskRef *apiclient.RunnerDataDiskRef
 }
 
 func NewService(cfg *HealthcheckServiceConfig) (*Service, error) {
@@ -58,17 +67,23 @@ func NewService(cfg *HealthcheckServiceConfig) (*Service, error) {
 		logger = cfg.Logger
 	}
 
+	var dataDiskRef *apiclient.RunnerDataDiskRef
+	if cfg.GCPProjectID != "" && cfg.GCPZone != "" && cfg.RunnerDataDiskName != "" {
+		dataDiskRef = apiclient.NewRunnerDataDiskRef("gcp", cfg.GCPProjectID, cfg.GCPZone, cfg.RunnerDataDiskName)
+	}
+
 	return &Service{
-		log:        logger.With(slog.String("component", "healthcheck")),
-		client:     apiClient,
-		interval:   cfg.Interval,
-		timeout:    cfg.Timeout,
-		collector:  cfg.Collector,
-		domain:     cfg.Domain,
-		apiPort:    cfg.ApiPort,
-		proxyPort:  cfg.ProxyPort,
-		tlsEnabled: cfg.TlsEnabled,
-		boxlite:    cfg.Boxlite,
+		log:         logger.With(slog.String("component", "healthcheck")),
+		client:      apiClient,
+		interval:    cfg.Interval,
+		timeout:     cfg.Timeout,
+		collector:   cfg.Collector,
+		domain:      cfg.Domain,
+		apiPort:     cfg.ApiPort,
+		proxyPort:   cfg.ProxyPort,
+		tlsEnabled:  cfg.TlsEnabled,
+		boxlite:     cfg.Boxlite,
+		dataDiskRef: dataDiskRef,
 	}, nil
 }
 
@@ -108,6 +123,11 @@ func (s *Service) newHealthcheck() *apiclient.RunnerHealthcheck {
 
 	healthcheck.SetProxyUrl(proxyUrl)
 	healthcheck.SetApiUrl(apiUrl)
+
+	if s.dataDiskRef != nil {
+		healthcheck.SetDataDiskRef(*s.dataDiskRef)
+	}
+
 	return healthcheck
 }
 

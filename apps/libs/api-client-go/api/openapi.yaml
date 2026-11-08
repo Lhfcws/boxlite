@@ -7442,6 +7442,35 @@ components:
       - healthy
       - serviceName
       type: object
+    RunnerDataDiskRef:
+      example:
+        provider: gcp
+        project: boxlite-prod-project
+        zone: us-central1-a
+        diskName: boxlite-runner-data-host-1
+      properties:
+        provider:
+          description: Cloud provider of the data disk
+          example: gcp
+          type: string
+        project:
+          description: Cloud project the data disk lives in
+          example: boxlite-prod-project
+          type: string
+        zone:
+          description: Cloud zone the data disk lives in
+          example: us-central1-a
+          type: string
+        diskName:
+          description: Name of the data disk, as the cloud API addresses it
+          example: boxlite-runner-data-host-1
+          type: string
+      required:
+      - diskName
+      - project
+      - provider
+      - zone
+      type: object
     RunnerHealthcheck:
       example:
         supportsPrivileged: true
@@ -7470,6 +7499,10 @@ components:
           items:
             $ref: "#/components/schemas/RunnerServiceHealth"
           type: array
+        dataDiskRef:
+          allOf:
+          - $ref: "#/components/schemas/RunnerDataDiskRef"
+          description: Cloud identity of the runner data disk; absent when the runner has none (AWS or local)
         domain:
           description: Runner domain
           example: runner-123.boxlite.example.com
