@@ -64,6 +64,10 @@ type Config struct {
 	RegistryProxyUsername              string        `envconfig:"REGISTRY_PROXY_USERNAME"`
 	RegistryProxyPassword              string        `envconfig:"REGISTRY_PROXY_PASSWORD"`
 	MigrateWorkDir                     string        `envconfig:"MIGRATE_WORK_DIR"`
+	GCPProjectID                       string        `envconfig:"GCP_PROJECT_ID"`
+	GCPZone                            string        `envconfig:"GCP_ZONE"`
+	RunnerDataDiskName                 string        `envconfig:"RUNNER_DATA_DISK_NAME"`
+	DataDiskDevice                     string        `envconfig:"RUNNER_DATA_DISK_DEVICE"`
 }
 
 var DEFAULT_API_PORT int = 8080
