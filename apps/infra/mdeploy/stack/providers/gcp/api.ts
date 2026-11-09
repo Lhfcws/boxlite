@@ -242,6 +242,17 @@ const bindingsFor = ({
         if (id.length > 64) throw new Error(`The custom role id "${id}" is ${id.length} characters and the limit is 64`)
         return id
       }
+      /*
+       * No `protect`, on purpose, matching the registry credential roles —
+       * the other custom roles the API holds, and the closest thing to a
+       * precedent for these. A role holds no state: if it is deleted out of
+       * band, the next deploy recreates it from this declaration; what
+       * `protect` would add is a refusal when a deploy itself deletes one
+       * (a rename, say), and that window — the binding dangling until the
+       * role exists again, the first resize 403ing — is one the registry
+       * roles have lived with since they shipped, now watched by an alarm
+       * rather than a deletion guard.
+       */
       const resizer = new gcp.projects.IAMCustomRole(`ApiCapability${index}DiskResizerRole`, {
         project,
         roleId: roleIdFor('runner_disk_resizer'),
