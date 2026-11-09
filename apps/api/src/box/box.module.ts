@@ -61,6 +61,10 @@ import { TunnelService } from './services/tunnel.service'
 import { AttachTicketService } from './services/attach-ticket.service'
 import { CpuIncidentModule } from './cpu-incidents/cpu-incident.module'
 import { MemoryIncidentModule } from './memory-incidents/memory-incident.module'
+import { RunnerDiskExpansion } from './entities/runner-disk-expansion.entity'
+import { RunnerDiskUsageSample } from './entities/runner-disk-usage-sample.entity'
+import { RunnerDiskExpansionService } from './services/runner-disk-expansion.service'
+import { GcpDiskClient } from './services/gcp-disk-client'
 
 @Module({
   imports: [
@@ -81,6 +85,8 @@ import { MemoryIncidentModule } from './memory-incidents/memory-incident.module'
       BoxMigration,
       Tunnel,
       Domain,
+      RunnerDiskExpansion,
+      RunnerDiskUsageSample,
     ]),
   ],
   controllers: [BoxController, RunnerController, PreviewController, VolumeController, JobController],
@@ -111,6 +117,8 @@ import { MemoryIncidentModule } from './memory-incidents/memory-incident.module'
     TunnelService,
     DomainService,
     AttachTicketService,
+    RunnerDiskExpansionService,
+    GcpDiskClient,
     BoxAccessGuard,
     RunnerAccessGuard,
     RegionRunnerAccessGuard,

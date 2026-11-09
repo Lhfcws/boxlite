@@ -113,6 +113,37 @@ export class RunnerServiceHealthDto {
   errorReason?: string
 }
 
+@ApiSchema({ name: 'RunnerDataDiskRef' })
+export class RunnerDataDiskRefDto {
+  @ApiProperty({
+    description: 'Cloud provider owning the data disk',
+    example: 'gcp',
+  })
+  @IsString()
+  provider: string
+
+  @ApiProperty({
+    description: 'Cloud project the data disk lives in',
+    example: 'boxlite-prod-us',
+  })
+  @IsString()
+  project: string
+
+  @ApiProperty({
+    description: 'Zone the data disk lives in',
+    example: 'us-central1-a',
+  })
+  @IsString()
+  zone: string
+
+  @ApiProperty({
+    description: 'Data disk name inside the project/zone, not a full resource path',
+    example: 'boxlite-app-prod-runner-7f3a-data',
+  })
+  @IsString()
+  diskName: string
+}
+
 @ApiSchema({ name: 'RunnerHealthcheck' })
 export class RunnerHealthcheckDto {
   @ApiPropertyOptional({ description: 'Runner preserves the guest privileged creation option' })
@@ -136,6 +167,18 @@ export class RunnerHealthcheckDto {
   @ValidateNested({ each: true })
   @Type(() => RunnerServiceHealthDto)
   serviceHealth?: RunnerServiceHealthDto[]
+
+  @ApiPropertyOptional({
+    description:
+      'The cloud data disk backing the runner BOXLITE_HOME filesystem. ' +
+      'Omitted by runners whose infrastructure has no data disk (AWS, local); ' +
+      'an older runner binary omits it too, which never clears a stored value.',
+    type: RunnerDataDiskRefDto,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => RunnerDataDiskRefDto)
+  dataDiskRef?: RunnerDataDiskRefDto
 
   @ApiPropertyOptional({
     description: 'Runner domain',
