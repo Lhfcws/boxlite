@@ -24,6 +24,7 @@ describe('runnerDiskConfig', () => {
       sampleIntervalMinutes: 10,
       sampleRetentionHours: 48,
       confirmTimeoutMinutes: 10,
+      liftPercentage: 75,
     })
   })
 
@@ -33,24 +34,16 @@ describe('runnerDiskConfig', () => {
         RUNNER_DISK_OVERCOMMIT_RATIO: '1.5',
         RUNNER_DISK_EXPAND_LIMIT_GIB: '4096',
         RUNNER_DISK_MIN_FREE_PERCENTAGE: '0',
-        RUNNER_DISK_WARNING_PERCENTAGE: '70',
-        RUNNER_DISK_CRITICAL_PERCENTAGE: '90',
         RUNNER_DISK_EXPANSION_ENABLED: 'true',
         RUNNER_DISK_EXPANSION_CAP_GIB: '512',
+        RUNNER_DISK_EXPANSION_LIFT_PERCENT: '60',
       }),
     ).toMatchObject({
       overcommitRatio: 1.5,
       expandLimitGiB: 4096,
       minFreePercentage: 0,
-      warningPercentage: 70,
-      criticalPercentage: 90,
-      expansion: expect.objectContaining({ enabled: true, capGiB: 512 }),
+      expansion: expect.objectContaining({ enabled: true, capGiB: 512, liftPercentage: 60 }),
     })
-  })
-
-  it('defaults warning below critical, matching the pressure hysteresis', () => {
-    const { warningPercentage, criticalPercentage } = runnerDiskConfig({})
-    expect(warningPercentage).toBeLessThan(criticalPercentage)
   })
 
   // Each of these parses to a value that silently changes admission or the
@@ -67,8 +60,6 @@ describe('runnerDiskConfig', () => {
     ['RUNNER_DISK_MIN_FREE_PERCENTAGE', 'ten'],
     ['RUNNER_DISK_MIN_FREE_PERCENTAGE', '-10'],
     ['RUNNER_DISK_MIN_FREE_PERCENTAGE', '100'],
-    ['RUNNER_DISK_WARNING_PERCENTAGE', 'not-a-number'],
-    ['RUNNER_DISK_CRITICAL_PERCENTAGE', '105'],
     ['RUNNER_DISK_EXPANSION_CAP_GIB', '4096.5'],
     ['RUNNER_DISK_EXPANSION_TRIGGER_PERCENT', '0'],
     ['RUNNER_DISK_EXPANSION_STEP_PERCENT', '150'],
@@ -76,6 +67,8 @@ describe('runnerDiskConfig', () => {
     ['RUNNER_DISK_EXPANSION_GROWTH_WINDOW_HOURS', '4.5'],
     ['RUNNER_DISK_EXPANSION_HEADROOM_FLOOR_GIB', '0'],
     ['RUNNER_DISK_EXPANSION_MAX_PER_WINDOW', '0'],
+    ['RUNNER_DISK_EXPANSION_LIFT_PERCENT', '0'],
+    ['RUNNER_DISK_EXPANSION_LIFT_PERCENT', '150'],
   ])('rejects %s=%s at boot', (name, value) => {
     expect(() => runnerDiskConfig({ [name]: value })).toThrow(name)
   })
