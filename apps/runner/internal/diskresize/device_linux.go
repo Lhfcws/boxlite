@@ -15,6 +15,15 @@ import (
 	"syscall"
 )
 
+// sysfsSizeUnitBytes is the reporting unit of /sys/dev/block/M:m/size. The
+// block core stores every block device's capacity as a count of 512-byte
+// sectors (bdev_nr_sectors in block/bdev.c), and drivers convert to this unit
+// when registering the device — so it holds for local NVMe, virtio, and
+// remote disks (NBD, iSCSI, RBD) alike. Do NOT substitute
+// queue/logical_block_size: hyperdisk presents 4 KiB logical sectors, and
+// scaling the sector count by it would overestimate capacity 8x.
+const sysfsSizeUnitBytes = 512
+
 // defaultReadDeviceSize resolves the data disk device and reads its capacity.
 // The by-id symlink is followed to the real device node; the size comes from
 // sysfs (512-byte sector count), not from statfs, because the trigger is the
@@ -54,7 +63,7 @@ func defaultReadDeviceSize(ctx context.Context, devicePath string) (uint64, erro
 		return 0, fmt.Errorf("parse %s: %w", sysfsPath, err)
 	}
 
-	return sectors * 512, nil
+	return sectors * sysfsSizeUnitBytes, nil
 }
 
 // defaultRunResize executes resize2fs on the device. On a mounted ext4
