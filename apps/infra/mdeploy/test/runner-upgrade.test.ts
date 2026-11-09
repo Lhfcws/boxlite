@@ -12,7 +12,8 @@
  */
 
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import {
@@ -23,13 +24,16 @@ import {
   renderHostConvergence,
   renderUnitEnvironmentPolicyScripts,
   renderPolicyScripts,
+  unitEnvironmentBlock,
   upgradeResourceName,
   upgradeTrigger,
+  type RunnerDataDiskIdentity,
   type UpgradeTarget,
 } from '../stack/runner-upgrade.ts'
 import { upgradeRunner, type CommandResult } from '../src/upgrade-runners.ts'
 import { runnerApiUrl } from '../stack/runner-boot.ts'
 import { CLOUD_RUNNER_KERNEL } from '../stack/runner-kernel.ts'
+import { runnerDataDiskNameFor } from '../stack/runners.ts'
 
 const REF = 'f'.repeat(40)
 const RELEASE = 'https://github.com/boxlite-ai/boxlite/releases/download/v0.10.0'
@@ -669,4 +673,107 @@ test('a registry proxy host that is not a host is refused before it reaches a ro
     }).validate,
     /'REGISTRY_PROXY_HOST=127\.0\.0\.1:4100'/,
   )
+})
+
+/*
+ * The data disks the control plane grows online are named once, in the policy
+ * the host already runs. The pairing a host reports is the one the disks were
+ * created under — `runnerDataDiskNameFor` — so the test holds the rendered
+ * script against that same function, and against what each host actually
+ * resolves: a loop that crossed two hosts' rows would hand the control plane
+ * one host's identity for another's disk, which is the failure the fleet table
+ * exists to make unreachable.
+ */
+const dataDiskIdentity = (hosts: string[]): RunnerDataDiskIdentity => ({
+  app: 'boxlite',
+  stage: 'dev',
+  project: 'boxlite-gcp-dev',
+  zone: 'asia-southeast1-b',
+  hosts,
+})
+
+test('each host of the fleet resolves its own data disk, and no other host’s', () => {
+  const hosts = ['boxlite-dev-runner', 'boxlite-dev-runner-2']
+  const block = unitEnvironmentBlock({
+    apiUrl: 'https://api.dev.boxlite.ai',
+    volumeBackend: 'gcs',
+    dataDiskIdentity: dataDiskIdentity(hosts),
+  })
+
+  // The whole fleet travels in one script, so per-host is a claim about what a
+  // host resolves, not about what was rendered for it. Run the block per host
+  // — BOXLITE_RUNNER_HOST_NAME replaces the metadata server, so nothing here
+  // reaches the network.
+  const directory = mkdtempSync('boxlite-unit-env-')
+  try {
+    const script = `${block}\nprintf 'RESOLVED=%s\\n' "$runner_data_disk"`
+    writeFileSync(`${directory}/block.sh`, script)
+    for (const host of hosts) {
+      const run = spawnSync('bash', [`${directory}/block.sh`], {
+        env: { ...process.env, BOXLITE_RUNNER_HOST_NAME: host, BOXLITE_RUNNER_ENV_FILE: `${directory}/runner.env` },
+        encoding: 'utf8',
+      })
+      assert.equal(run.status, 0, run.stderr)
+      assert.match(
+        run.stdout,
+        new RegExp(`RESOLVED=${runnerDataDiskNameFor({ app: 'boxlite', stage: 'dev', host })}\n`),
+        `${host} resolved another host's disk`,
+      )
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+test('a host the fleet table does not hold is refused rather than defaulted', () => {
+  const block = unitEnvironmentBlock({
+    apiUrl: 'https://api.dev.boxlite.ai',
+    volumeBackend: 'gcs',
+    dataDiskIdentity: dataDiskIdentity(['boxlite-dev-runner']),
+  })
+  const directory = mkdtempSync('boxlite-unit-env-')
+  try {
+    writeFileSync(`${directory}/block.sh`, block)
+    const run = spawnSync('bash', [`${directory}/block.sh`], {
+      env: { ...process.env, BOXLITE_RUNNER_HOST_NAME: 'someone-elses-host', BOXLITE_RUNNER_ENV_FILE: `${directory}/runner.env` },
+      encoding: 'utf8',
+    })
+    assert.equal(run.status, 1, 'an unknown host must not resolve a disk name at all')
+    assert.match(run.stderr, /is not one of this stage's runner hosts/)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+test('a cloud with no data disk names none, and the policy stays byte-identical', () => {
+  // The transports carry no stage environment, so a host payload has nothing
+  // to select a row with; the identity is policy-only by construction.
+  const block = unitEnvironmentBlock({ apiUrl: 'https://api.dev.boxlite.ai', volumeBackend: 'gcs' })
+  assert.doesNotMatch(block, /RUNNER_DATA_DISK_NAME/)
+  assert.doesNotMatch(block, /GCP_PROJECT_ID/)
+  assert.doesNotMatch(block, /GCP_ZONE/)
+  assert.doesNotMatch(block, /metadata\.google\.internal/)
+
+  assert.doesNotMatch(renderHostConvergence(target({ apiUrl: 'https://api.dev.boxlite.ai' })), /RUNNER_DATA_DISK_NAME/)
+})
+
+test('a data-disk identity that reaches a root shell is checked wherever it is given', () => {
+  const bad = (overrides: Partial<RunnerDataDiskIdentity> = {}): RunnerDataDiskIdentity => ({
+    ...dataDiskIdentity(['boxlite-dev-runner']),
+    ...overrides,
+  })
+  for (const identity of [
+    bad({ project: "p'; rm -rf / #" }),
+    bad({ zone: 'asia-southeast1-b; rm -rf /' }),
+    bad({ hosts: [] }),
+    bad({ hosts: ['boxlite-dev-runner*'] }),
+    bad({ hosts: ['boxlite-dev-runner; rm -rf /'] }),
+    bad({ hosts: ['boxlite-dev-runner', 'boxlite-dev-runner'] }),
+  ]) {
+    assert.throws(
+      () => renderUnitEnvironmentPolicyScripts({ apiUrl: 'https://api.boxlite.ai', volumeBackend: 'gcs', dataDiskIdentity: identity }),
+      RunnerUpgradeError,
+      `accepted ${JSON.stringify(identity)}`,
+    )
+  }
 })
