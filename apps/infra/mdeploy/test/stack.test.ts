@@ -43,7 +43,7 @@ const config: DeployConfig = parseDeployConfig(
       apiServerErrors: { threshold: 1, periods: 1 },
       proxyUnhealthyTargets: { threshold: 1, periods: 2 },
       runnersUnreachable: { threshold: 1, periods: 3 },
-      runnersDiskExpansionFailing: { threshold: 3, periods: 3 },
+      runnersDiskExpansionFailing: { threshold: 3, periods: 1 },
       runnersDiskPressureCritical: { threshold: 1, periods: 2 },
     },
   }),

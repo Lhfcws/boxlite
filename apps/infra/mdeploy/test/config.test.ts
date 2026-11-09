@@ -20,7 +20,7 @@ const valid = {
     apiServerErrors: { threshold: 1, periods: 1 },
     proxyUnhealthyTargets: { threshold: 1, periods: 2 },
     runnersUnreachable: { threshold: 1, periods: 3 },
-    runnersDiskExpansionFailing: { threshold: 3, periods: 3 },
+    runnersDiskExpansionFailing: { threshold: 3, periods: 1 },
     runnersDiskPressureCritical: { threshold: 1, periods: 2 },
   },
 }
@@ -199,7 +199,7 @@ test('the stages differ where they are meant to, and each says so in full', () =
 test('the runner disk alarms parse, and a stage without them is refused', () => {
   assert.deepEqual(parse().alarms, valid.alarms)
   for (const [name, alarm] of Object.entries({
-    runnersDiskExpansionFailing: { threshold: 3, periods: 3 },
+    runnersDiskExpansionFailing: { threshold: 3, periods: 1 },
     runnersDiskPressureCritical: { threshold: 1, periods: 2 },
   })) {
     assert.deepEqual((parse().alarms as any)[name], alarm, name)
@@ -227,7 +227,7 @@ test('the committed example carries the disk alarms every stage must now set', (
   const example = JSON.parse(readFileSync(new URL('../../.mstage.config.example.json', import.meta.url), 'utf8'))
   for (const [stage, block] of Object.entries<any>(example.stages)) {
     assert.equal(block.deploy.alarms.runnersDiskExpansionFailing.threshold, 3, stage)
-    assert.equal(block.deploy.alarms.runnersDiskExpansionFailing.periods, 3, stage)
+    assert.equal(block.deploy.alarms.runnersDiskExpansionFailing.periods, 1, stage)
     assert.equal(block.deploy.alarms.runnersDiskPressureCritical.threshold, 1, stage)
     assert.equal(block.deploy.alarms.runnersDiskPressureCritical.periods, 2, stage)
   }
