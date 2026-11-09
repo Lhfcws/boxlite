@@ -210,4 +210,37 @@ func TestTickStateMachine(t *testing.T) {
 			t.Fatalf("missing-device debug lines = %d, want exactly 1; logs:\n%s", got, logs)
 		}
 	})
+
+	t.Run("first successful read logs the device observation once", func(t *testing.T) {
+		handler := &recordingHandler{}
+		ticker, _, _ := newTestTicker(200*1024*1024*1024, nil, nil)
+		ticker.log = slog.New(handler)
+
+		for i := 0; i < 3; i++ {
+			ticker.tick(ctx)
+		}
+
+		logs := handler.message()
+		if got := strings.Count(logs, "Data disk device observed"); got != 1 {
+			t.Fatalf("device observation lines = %d, want exactly 1 across 3 successful ticks; logs:\n%s", got, logs)
+		}
+	})
+
+	t.Run("missing device never logs the observation", func(t *testing.T) {
+		missingErr := fmt.Errorf("%w: %s", ErrDeviceMissing, "/dev/disk/by-id/google-boxlite-data")
+		handler := &recordingHandler{}
+		ticker, _, runs := newTestTicker(0, missingErr, nil)
+		ticker.log = slog.New(handler)
+
+		for i := 0; i < 3; i++ {
+			ticker.tick(ctx)
+		}
+
+		if got := strings.Count(handler.message(), "Data disk device observed"); got != 0 {
+			t.Fatalf("device observation lines = %d, want 0 on a host without the device", got)
+		}
+		if got := runs.Load(); got != 0 {
+			t.Fatalf("resize2fs runs = %d, want 0", got)
+		}
+	})
 }

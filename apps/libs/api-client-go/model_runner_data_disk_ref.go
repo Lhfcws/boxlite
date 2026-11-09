@@ -19,7 +19,7 @@ import (
 // checks if the RunnerDataDiskRef type satisfies the MappedNullable interface at compile time
 var _ MappedNullable = &RunnerDataDiskRef{}
 
-// RunnerDataDiskRef struct for RunnerDataDiskRef
+// RunnerDataDiskRef Cloud identity of the runner data disk. Disk type is intentionally omitted: the cloud API addresses a disk by name alone, the actual type (persistent disk vs hyperdisk) is derivable via compute.disks.get when monitoring needs it, and a future non-disk backend would need a different schema rather than an extra string field.
 type RunnerDataDiskRef struct {
 	// Cloud provider of the data disk
 	Provider string `json:"provider"`

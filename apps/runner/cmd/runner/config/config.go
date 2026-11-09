@@ -64,10 +64,19 @@ type Config struct {
 	RegistryProxyUsername              string        `envconfig:"REGISTRY_PROXY_USERNAME"`
 	RegistryProxyPassword              string        `envconfig:"REGISTRY_PROXY_PASSWORD"`
 	MigrateWorkDir                     string        `envconfig:"MIGRATE_WORK_DIR"`
-	GCPProjectID                       string        `envconfig:"GCP_PROJECT_ID"`
-	GCPZone                            string        `envconfig:"GCP_ZONE"`
-	RunnerDataDiskName                 string        `envconfig:"RUNNER_DATA_DISK_NAME"`
-	DataDiskDevice                     string        `envconfig:"RUNNER_DATA_DISK_DEVICE"`
+	// Data disk identity injected by infra on GCP hosts (hyperdisk LLD §4.2).
+	// When all three are set, the healthcheck reports them as a dataDiskRef;
+	// if any is missing, the ref is omitted entirely.
+	GCPProjectID string `envconfig:"GCP_PROJECT_ID"`
+	GCPZone      string `envconfig:"GCP_ZONE"`
+	// RunnerDataDiskName is the GCP disk resource name (the name part of
+	// projects/…/zones/…/disks/<name>) as provisioned by infra; the API's
+	// disk-expansion controller targets this exact resource.
+	RunnerDataDiskName string `envconfig:"RUNNER_DATA_DISK_NAME"`
+	// DataDiskDevice overrides the block device path the resize ticker reads
+	// (default /dev/disk/by-id/google-boxlite-data). Test/local-only: prod
+	// never sets it.
+	DataDiskDevice string `envconfig:"RUNNER_DATA_DISK_DEVICE"`
 }
 
 var DEFAULT_API_PORT int = 8080

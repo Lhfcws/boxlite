@@ -45,6 +45,9 @@ type Ticker struct {
 	lastDevBytes  *uint64
 	failures      int
 	missingLogged bool
+	// observed marks the first successful device-size read, which logs the
+	// capacity once so operators can match it against the cloud console.
+	observed bool
 }
 
 func New(cfg Config) *Ticker {
@@ -113,6 +116,11 @@ func (t *Ticker) tick(ctx context.Context) {
 		}
 		t.log.WarnContext(ctx, "Failed to read data disk device size", "device", t.devicePath, "error", err)
 		return
+	}
+
+	if !t.observed {
+		t.observed = true
+		t.log.InfoContext(ctx, "Data disk device observed", "device", t.devicePath, "deviceBytes", devBytes, "deviceGiB", devBytes>>30)
 	}
 
 	if t.unchanged(devBytes) {

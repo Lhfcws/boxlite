@@ -1,5 +1,6 @@
 # RunnerDataDiskRef
 
+Cloud identity of the runner data disk. Disk type is intentionally omitted: the cloud API addresses a disk by name alone, the actual type (persistent disk vs hyperdisk) is derivable via compute.disks.get when monitoring needs it, and a future non-disk backend would need a different schema rather than an extra string field.
 
 ## Properties
 
