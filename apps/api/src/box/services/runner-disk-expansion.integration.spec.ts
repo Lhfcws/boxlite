@@ -299,24 +299,23 @@ describeIfDatabase('RunnerDiskExpansionService (integration, real Postgres)', ()
       }
 
       const fresh = await saveRunner()
-      const operatorMarked = await saveRunner({ unschedulable: true, unschedulableReason: RunnerUnschedulableReason.OPERATOR })
-      const pressureMarked = await saveRunner({ unschedulable: true, unschedulableReason: RunnerUnschedulableReason.DISK_PRESSURE })
+      // The operator endpoint flips the boolean only and never writes the
+      // reason column, so a foreign mark is `unschedulable` with a NULL
+      // reason. Neither half of the state machine may touch it: marking keys
+      // on `unschedulable = false`, lifting keys on the reason being ours
+      // (a NULL reason never matches).
+      const operatorMarked = await saveRunner({ unschedulable: true, unschedulableReason: null })
 
       await internals.markExhausted(fresh, 'budget exhausted')
       await internals.markExhausted(operatorMarked, 'budget exhausted')
-      await internals.markExhausted(pressureMarked, 'budget exhausted')
 
       expect((await runners.findOneByOrFail({ id: fresh.id })).unschedulableReason).toBe(
         RunnerUnschedulableReason.DISK_EXPAND_EXHAUSTED,
       )
-      // Someone else's mark is never overwritten, and never lifted by this
-      // controller either.
-      expect((await runners.findOneByOrFail({ id: operatorMarked.id })).unschedulableReason).toBe(
-        RunnerUnschedulableReason.OPERATOR,
-      )
-      expect((await runners.findOneByOrFail({ id: pressureMarked.id })).unschedulableReason).toBe(
-        RunnerUnschedulableReason.DISK_PRESSURE,
-      )
+      // Someone else's mark is never overwritten (marking keys on
+      // unschedulable = false) and never lifted (lifting keys on the reason
+      // being ours; a NULL reason never matches).
+      expect((await runners.findOneByOrFail({ id: operatorMarked.id })).unschedulableReason).toBeNull()
 
       await internals.liftExhaustedMark(operatorMarked)
       expect((await runners.findOneByOrFail({ id: operatorMarked.id })).unschedulable).toBe(true)

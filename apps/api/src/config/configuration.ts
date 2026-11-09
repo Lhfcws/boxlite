@@ -456,22 +456,6 @@ export function runnerDiskConfig(env: NodeJS.ProcessEnv = process.env) {
       (n) => n >= 0 && n < 100,
       'a percentage from 0 up to (not including) 100',
     ),
-    // Disk pressure on heartbeat: log from warning; mark unschedulable from
-    // critical, and lift that mark below warning.
-    warningPercentage: boundedNumber(
-      env.RUNNER_DISK_WARNING_PERCENTAGE,
-      75,
-      'RUNNER_DISK_WARNING_PERCENTAGE',
-      (n) => n >= 0 && n < 100,
-      'a percentage from 0 up to (not including) 100',
-    ),
-    criticalPercentage: boundedNumber(
-      env.RUNNER_DISK_CRITICAL_PERCENTAGE,
-      85,
-      'RUNNER_DISK_CRITICAL_PERCENTAGE',
-      (n) => n >= 0 && n <= 100,
-      'a percentage from 0 to 100',
-    ),
     expansion: {
       // Master switch; the gray-release lever. Off means the controller,
       // sampling and unschedulable marks all stay dormant.
@@ -546,6 +530,18 @@ export function runnerDiskConfig(env: NodeJS.ProcessEnv = process.env) {
         env.RUNNER_DISK_EXPANSION_CONFIRM_TIMEOUT_MIN,
         10,
         'RUNNER_DISK_EXPANSION_CONFIRM_TIMEOUT_MIN',
+      ),
+      // Lift the exhausted mark only below this usage line. It mirrors the
+      // scheduler's usage penalty brake (RUNNER_DISK_PENALTY_THRESHOLD, also
+      // 75 by default) -- the controller re-trusts a runner exactly when
+      // scheduling stops penalizing it -- as a separate knob, so a stage can
+      // keep the two lines aligned when it retunes the brake.
+      liftPercentage: boundedNumber(
+        env.RUNNER_DISK_EXPANSION_LIFT_PERCENT,
+        75,
+        'RUNNER_DISK_EXPANSION_LIFT_PERCENT',
+        (n) => n > 0 && n < 100,
+        'a percentage above 0 up to 100',
       ),
     },
   }

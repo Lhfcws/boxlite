@@ -479,7 +479,7 @@ a derived availability score.
 | `currentStartedBoxes` | `integer` | |
 | `availabilityScore` | `integer` | |
 | `unschedulable` | `boolean` | default `false` |
-| `unschedulableReason` | `enum` | nullable; `operator` \| `disk_pressure` \| `disk_expand_exhausted`; whose mark `unschedulable` is — only the API's own marks lift themselves |
+| `unschedulableReason` | `enum` | nullable; `disk_expand_exhausted`; whose mark `unschedulable` is — set by the disk-expansion cron only (operator marks carry a NULL reason, and only this reason lifts itself) |
 | `draining` | `boolean` | default `false` |
 | `appVersion` | `character varying` | default `v0.0.0-dev` |
 | `apiVersion` | `character varying` | default `0` |

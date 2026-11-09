@@ -319,7 +319,7 @@ export class RunnerDiskExpansionService {
   /** Evaluation half of the round: sample, gate, and where allowed, grow. */
   private async evaluateRunners(signal: AbortSignal, now: Date): Promise<void> {
     const expansion = this.configService.getOrThrow('runnerDisk.expansion')
-    const runnerDisk = this.configService.getOrThrow('runnerDisk')
+    const { expandLimitGiB } = this.configService.getOrThrow('runnerDisk')
     const windowMs = expansion.growthWindowHours * 3600_000
     const retentionCutoff = new Date(now.getTime() - expansion.sampleRetentionHours * 3600_000)
 
@@ -340,7 +340,7 @@ export class RunnerDiskExpansionService {
       try {
         const patched = await this.evaluateRunner(runner, {
           expansion,
-          runnerDisk,
+          expandLimitGiB,
           windowMs,
           retentionCutoff,
           now,
@@ -358,16 +358,16 @@ export class RunnerDiskExpansionService {
     runner: Runner,
     ctx: {
       expansion: ExpansionSettings
-      runnerDisk: RunnerDiskSettings
+      expandLimitGiB: number | undefined
       windowMs: number
       retentionCutoff: Date
       now: Date
       dataDiskRef: RunnerDataDiskRef
     },
   ): Promise<boolean> {
-    const { expansion, runnerDisk, windowMs, retentionCutoff, now } = ctx
+    const { expansion, expandLimitGiB, windowMs, retentionCutoff, now } = ctx
     const budgetWindowStart = new Date(now.getTime() - expansion.growthWindowHours * 3600_000)
-    const cap = resolveCapGiB(expansion.capGiB, runnerDisk.expandLimitGiB)
+    const cap = resolveCapGiB(expansion.capGiB, expandLimitGiB)
 
     // 0) Lift first, ahead of every skip: a recovered runner returns to the
     // pool as soon as usage, budget, and cap allow, even if this round will
@@ -378,7 +378,7 @@ export class RunnerDiskExpansionService {
           where: { runnerId: runner.id, accepted: true, requestedAt: MoreThan(budgetWindowStart) },
         })) < expansion.maxExpansionsPerWindow
       const capHasRoom = cap !== undefined && runner.diskGiB < cap
-      if (runner.currentDiskUsagePercentage < runnerDisk.warningPercentage && budgetFree && capHasRoom) {
+      if (runner.currentDiskUsagePercentage < expansion.liftPercentage && budgetFree && capHasRoom) {
         await this.liftExhaustedMark(runner)
       }
     }

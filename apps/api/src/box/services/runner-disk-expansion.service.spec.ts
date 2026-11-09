@@ -141,9 +141,8 @@ function makeService(opts: {
     capGiB: 4096,
     ...opts.expansion,
   }
-  const runnerDisk = { ...runnerDiskConfig({}), expandLimitGiB: opts.expandLimitGiB, expansion }
   const values: Record<string, unknown> = {
-    'runnerDisk': runnerDisk,
+    'runnerDisk': { expandLimitGiB: opts.expandLimitGiB },
     'runnerDisk.expansion': expansion,
     'runnerDisk.expansion.enabled': expansion.enabled,
     'runnerDisk.expansion.sampleIntervalMinutes': expansion.sampleIntervalMinutes,
@@ -321,8 +320,8 @@ describe('RunnerDiskExpansionService round', () => {
 
       await service.evaluateAndConfirm()
 
-      // Lift keys on the reason being ours, so operator and disk-pressure
-      // marks are never touched by this controller.
+      // Lift keys on the reason being ours, so an operator's boolean-only
+      // mark (reason NULL) is never touched by this controller.
       expect(runnerRepository.update).toHaveBeenCalledWith(
         { id: runner.id, unschedulableReason: RunnerUnschedulableReason.DISK_EXPAND_EXHAUSTED },
         { unschedulable: false, unschedulableReason: null },
@@ -332,7 +331,7 @@ describe('RunnerDiskExpansionService round', () => {
       expect(gcpDiskClient.resizeDisk).not.toHaveBeenCalled()
     })
 
-    it('does not lift while usage stays above the warning line', async () => {
+    it('does not lift while usage stays above the lift line', async () => {
       const runner = gcpRunner({
         unschedulable: true,
         unschedulableReason: RunnerUnschedulableReason.DISK_EXPAND_EXHAUSTED,

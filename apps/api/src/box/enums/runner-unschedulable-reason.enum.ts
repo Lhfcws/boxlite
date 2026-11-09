@@ -3,10 +3,12 @@
  * SPDX-License-Identifier: AGPL-3.0
  */
 
-/** Who set `runner.unschedulable`; only the API's own marks are lifted automatically. */
+/**
+ * The reason the disk-expansion controller set `runner.unschedulable`; the
+ * single value keeps foreign marks reasonless, so lifting keys on the reason
+ * and can never lift a mark the controller does not own.
+ */
 export enum RunnerUnschedulableReason {
-  /** A manual mark: a person set it through the scheduling endpoint, and only a person lifts it. */
-  OPERATOR = 'operator',
-  DISK_PRESSURE = 'disk_pressure',
+  /** The data disk cannot grow further: budget spent or the cap reached. */
   DISK_EXPAND_EXHAUSTED = 'disk_expand_exhausted',
 }
