@@ -297,7 +297,7 @@ export class RunnerDiskExpansionService {
       return
     }
     const latencyMs = Math.round(now.getTime() - row.requestedAt.getTime())
-    this.logger.log(`Runner ${row.runnerId} data disk expansion ${status}`, {
+    const attributes = {
       'event.name': 'runner.disk_expansion',
       'runner.id': row.runnerId,
       'disk.from_gib': row.fromGiB,
@@ -305,7 +305,15 @@ export class RunnerDiskExpansionService {
       'disk.expansion_result': status,
       'disk.expansion_latency_ms': latencyMs,
       ...(error ? { 'disk.expansion_error': error } : {}),
-    })
+    }
+    // A terminal failure is not ignorable: the failing alarm's log filter is
+    // severity>=ERROR, and the operation-FAILED and never-confirmed closes are
+    // that alarm's only notice for them. Confirmations stay informational.
+    if (status === RunnerDiskExpansionStatus.FAILED) {
+      this.logger.error(`Runner ${row.runnerId} data disk expansion failed: ${error}`, attributes)
+    } else {
+      this.logger.log(`Runner ${row.runnerId} data disk expansion ${status}`, attributes)
+    }
   }
 
   /** Evaluation half of the round: sample, gate, and where allowed, grow. */

@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: AGPL-3.0
  */
 
+import { Logger } from '@nestjs/common'
 import { EventEmitter2 } from '@nestjs/event-emitter'
 import { DataSource } from 'typeorm'
 import { Runner } from '../entities/runner.entity'
@@ -520,6 +521,45 @@ describe('RunnerDiskExpansionService round', () => {
         { id: 'row-1', status: RunnerDiskExpansionStatus.PENDING },
         expect.objectContaining({ status: RunnerDiskExpansionStatus.FAILED, error: EXPANSION_ERROR.UNCONFIRMED }),
       )
+    })
+
+    it('logs terminal failures at error severity and confirmations at info', async () => {
+      // The failing alarm's log filter is severity>=ERROR, and this close-out
+      // is that alarm's only notice for the two failure modes it must report
+      // (operation FAILED, never confirmed). Logging them at info would leave
+      // the alarm silent exactly when it matters. confirmed stays informational.
+      const errorSpy = jest.spyOn(Logger.prototype, 'error')
+      const logSpy = jest.spyOn(Logger.prototype, 'log')
+
+      // unconfirmed: op DONE but the filesystem never grew, past the timeout.
+      const row = pendingRow()
+      row.requestedAt = new Date(Date.now() - 11 * 60_000)
+      const failed = makeService({
+        readyRunners: [gcpRunner({ diskGiB: 200 })],
+        pendingExpansions: [row],
+        zoneOperation: { status: 'DONE' },
+      })
+      await failed.service.evaluateAndConfirm()
+
+      // confirmed: op DONE and the runner reports the grown size.
+      const confirmed = makeService({
+        readyRunners: [gcpRunner({ diskGiB: 250 * 0.979 })],
+        pendingExpansions: [pendingRow()],
+        zoneOperation: { status: 'DONE' },
+      })
+      await confirmed.service.evaluateAndConfirm()
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('failed'),
+        expect.objectContaining({ 'event.name': 'runner.disk_expansion' }),
+      )
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringContaining('confirmed'),
+        expect.objectContaining({ 'event.name': 'runner.disk_expansion' }),
+      )
+
+      errorSpy.mockRestore()
+      logSpy.mockRestore()
     })
 
     it('leaves in-flight operations pending', async () => {
