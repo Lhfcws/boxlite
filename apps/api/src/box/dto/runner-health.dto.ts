@@ -116,7 +116,7 @@ export class RunnerServiceHealthDto {
 @ApiSchema({
   name: 'RunnerDataDiskRef',
   description:
-    'Cloud identity of the runner data disk. Disk type is intentionally omitted: the cloud API addresses a disk by name alone, the actual type (persistent disk vs hyperdisk) is derivable via compute.disks.get when monitoring needs it, and a future non-disk backend would need a different schema rather than an extra string field.',
+    'Cloud identity of the runner data disk. diskType names the backend so the API can tell expandable block disks from backends with a different resize path (e.g. Filestore); runners predating the field are treated as hyperdisk_balanced, the only type infra provisions today.',
 })
 export class RunnerDataDiskRefDto {
   @ApiProperty({
@@ -146,6 +146,15 @@ export class RunnerDataDiskRefDto {
   })
   @IsString()
   diskName: string
+
+  @ApiPropertyOptional({
+    description:
+      'Backend behind the identity (hyperdisk_balanced, filestore, ...). Omitted by runner binaries predating the field; the API then assumes hyperdisk_balanced, the only data disk infra provisions today.',
+    example: 'hyperdisk_balanced',
+  })
+  @IsOptional()
+  @IsString()
+  diskType?: string
 }
 
 @ApiSchema({ name: 'RunnerHealthcheck' })
