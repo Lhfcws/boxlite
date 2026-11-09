@@ -33,6 +33,18 @@ func (h *recordingHandler) WithGroup(name string) slog.Handler {
 	return h
 }
 
+func (h *recordingHandler) count(level slog.Level) int {
+	h.mutex.Lock()
+	defer h.mutex.Unlock()
+	n := 0
+	for _, r := range h.records {
+		if r.Level == level {
+			n++
+		}
+	}
+	return n
+}
+
 func (h *recordingHandler) message() string {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
@@ -80,13 +92,16 @@ func TestTickStateMachine(t *testing.T) {
 	})
 
 	t.Run("unchanged device size skips resize2fs", func(t *testing.T) {
-		ticker, _, runs := newTestTicker(200*1024*1024*1024, nil, nil)
+		ticker, reads, runs := newTestTicker(200*1024*1024*1024, nil, nil)
 		ticker.tick(ctx)
 		ticker.tick(ctx)
 		ticker.tick(ctx)
 
 		if got := runs.Load(); got != 1 {
 			t.Fatalf("resize2fs runs = %d, want exactly 1 across three unchanged ticks", got)
+		}
+		if got := reads.Load(); got != 3 {
+			t.Fatalf("device size reads = %d, want one sysfs read per tick (3 ticks)", got)
 		}
 	})
 
@@ -155,6 +170,29 @@ func TestTickStateMachine(t *testing.T) {
 		}
 		if ticker.lastDevBytes != nil {
 			t.Fatalf("baseline = %v, want nil", ticker.lastDevBytes)
+		}
+	})
+
+	t.Run("transient read errors warn every tick without resizing", func(t *testing.T) {
+		readErr := errors.New("read /sys/dev/block/8:16/size: permission denied")
+		handler := &recordingHandler{}
+		ticker, _, runs := newTestTicker(0, readErr, nil)
+		ticker.log = slog.New(handler)
+
+		ticker.tick(ctx)
+		ticker.tick(ctx)
+
+		if got := runs.Load(); got != 0 {
+			t.Fatalf("resize2fs runs = %d, want 0 while the device size is unreadable", got)
+		}
+		if ticker.lastDevBytes != nil {
+			t.Fatalf("baseline = %v, want nil while reads fail", ticker.lastDevBytes)
+		}
+		if got := handler.count(slog.LevelWarn); got != 2 {
+			t.Fatalf("warn logs = %d, want one per failed tick (2 ticks)", got)
+		}
+		if got := handler.count(slog.LevelDebug); got != 0 {
+			t.Fatalf("debug logs = %d, want 0 (only missing-device is a permanent skip)", got)
 		}
 	})
 

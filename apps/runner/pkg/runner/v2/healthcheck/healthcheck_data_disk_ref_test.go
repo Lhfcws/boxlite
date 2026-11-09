@@ -8,16 +8,17 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	apiclient "github.com/boxlite-ai/boxlite/libs/api-client-go"
+	blclient "github.com/boxlite-ai/runner/pkg/boxlite"
 )
 
 // TestServiceDataDiskRefAssemblyContract checks the LLD §5.2 rule: the
-// healthcheck carries dataDiskRef only when project, zone and disk name are
-// all present; any missing part omits the whole field. The API skips runners
-// without the field, so a partial ref (garbage disk name) must be impossible
-// on the wire. The payload goes through the production request layer (the
-// generated client's RunnerHealthcheck call), so the assertions hold against
-// the exact JSON the runner sends.
+// healthcheck carries dataDiskRef
+// only when project, zone and disk name are all present; any missing part
+// omits the whole field. Each case drives NewService itself — not a local
+// mirror of its assembly condition — so a loosened condition (a partial ref
+// reaching the wire) turns the suite red. The payload then goes through
+// newHealthcheck and the real generated client onto an httptest server, so
+// the assertions hold against the exact JSON the runner sends.
 func TestServiceDataDiskRefAssemblyContract(t *testing.T) {
 	payloads := make(chan map[string]any, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -35,7 +36,10 @@ func TestServiceDataDiskRefAssemblyContract(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client := apiclient.NewAPIClient(&apiclient.Configuration{Servers: apiclient.ServerConfigurations{{URL: server.URL}}})
+	// NewService builds its API client from the config singleton, which reads
+	// these env keys; point it at the test server once for all cases.
+	t.Setenv("BOXLITE_API_URL", server.URL)
+	t.Setenv("BOXLITE_RUNNER_TOKEN", "wire-contract-test-token")
 
 	for _, tc := range []struct {
 		name     string
@@ -66,7 +70,7 @@ func TestServiceDataDiskRefAssemblyContract(t *testing.T) {
 		{
 			name:     "missing project omits the whole field",
 			zone:     "us-central1-a",
-			diskName: "boxlite-runner-missing-project",
+			diskName: "boxlite-runner-data-host-1",
 			wantSent: false,
 		},
 		{
@@ -75,21 +79,47 @@ func TestServiceDataDiskRefAssemblyContract(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			service := &Service{
-				log:         slog.Default(),
-				client:      client,
-				domain:      "runner.example.com",
-				apiPort:     8080,
-				proxyPort:   8080,
-				tlsEnabled:  false,
-				dataDiskRef: dataDiskRefFor(tc.project, tc.zone, tc.diskName),
+			service, err := NewService(&HealthcheckServiceConfig{
+				Logger:             slog.Default(),
+				Domain:             "runner.example.com",
+				ApiPort:            8080,
+				ProxyPort:          8080,
+				Boxlite:            &blclient.Client{},
+				GCPProjectID:       tc.project,
+				GCPZone:            tc.zone,
+				RunnerDataDiskName: tc.diskName,
+			})
+			if err != nil {
+				t.Fatalf("NewService failed: %v", err)
 			}
 
-			// The same request the service sends: the payload built by
-			// newHealthcheck goes through the generated client.
+			// Assembly assertions on the production decision itself.
+			if !tc.wantSent {
+				if service.dataDiskRef != nil {
+					t.Fatalf("dataDiskRef assembled despite a missing env key: %+v", service.dataDiskRef)
+				}
+			} else {
+				if service.dataDiskRef == nil {
+					t.Fatalf("dataDiskRef not assembled from a complete env set")
+				}
+				if got := service.dataDiskRef.GetProvider(); got != "gcp" {
+					t.Fatalf("provider = %q, want gcp", got)
+				}
+				if got := service.dataDiskRef.GetProject(); got != tc.project {
+					t.Fatalf("project = %q, want %q", got, tc.project)
+				}
+				if got := service.dataDiskRef.GetZone(); got != tc.zone {
+					t.Fatalf("zone = %q, want %q", got, tc.zone)
+				}
+				if got := service.dataDiskRef.GetDiskName(); got != tc.diskName {
+					t.Fatalf("diskName = %q, want %q", got, tc.diskName)
+				}
+			}
+
+			// Wire assertions through the production request path.
 			healthcheck := service.newHealthcheck()
-			req := client.RunnersAPI.RunnerHealthcheck(context.Background()).RunnerHealthcheck(*healthcheck)
-			_, err := req.Execute()
+			req := service.client.RunnersAPI.RunnerHealthcheck(context.Background()).RunnerHealthcheck(*healthcheck)
+			_, err = req.Execute()
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -120,12 +150,4 @@ func TestServiceDataDiskRefAssemblyContract(t *testing.T) {
 			}
 		})
 	}
-}
-
-// dataDiskRefFor mirrors NewService's all-or-nothing assembly.
-func dataDiskRefFor(project, zone, diskName string) *apiclient.RunnerDataDiskRef {
-	if project == "" || zone == "" || diskName == "" {
-		return nil
-	}
-	return apiclient.NewRunnerDataDiskRef("gcp", project, zone, diskName)
 }

@@ -1,9 +1,7 @@
-//go:build linux
+// Copyright 2026 BoxLite AI
+// SPDX-License-Identifier: AGPL-3.0
 
-/*
- * Copyright 2025 BoxLite AI (originally Daytona Platforms Inc.
- * SPDX-License-Identifier: AGPL-3.0
- */
+//go:build linux
 
 package diskresize
 

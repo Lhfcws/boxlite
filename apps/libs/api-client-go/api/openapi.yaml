@@ -7410,6 +7410,7 @@ components:
         - serviceName: runner
           healthy: false
           errorReason: Cannot connect to the runner
+        dataDiskRef: ""
         domain: runner-123.boxlite.example.com
         proxyUrl: http://proxy.boxlite.example.com:8080
         apiUrl: http://api.boxlite.example.com:8080
