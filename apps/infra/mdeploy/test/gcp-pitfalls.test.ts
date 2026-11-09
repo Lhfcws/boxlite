@@ -50,6 +50,7 @@ import {
 import { RUNNER_HOME } from '../stack/runner-boot.ts'
 import { apiPrefixRouteRules } from '../stack/providers/gcp/api.ts'
 import { isMissingNeg } from '../stack/providers/gcp/edge.ts'
+import { runnerDataDiskPrefix, runnerDataDiskNameFor } from '../stack/runners.ts'
 import { instanceFor } from 'naming'
 import {
   REGISTRY_PROXY_CONTROL_PLANE_VARIABLE,
@@ -1991,6 +1992,45 @@ test('the disk grant is derived from the names the disks are created under', () 
   assert.doesNotMatch(api, /'compute\.disks\.delete'/)
   assert.doesNotMatch(api, /'compute\.disks\.create'/)
   assert.doesNotMatch(api, /'compute\.disks\.setIamPolicy'/)
+
+  /*
+   * The functional half the design's test note spells (§12.1): a disk named by
+   * the one rule must be matched by the prefix the grant is written against.
+   * The source assertions above prove the grant spells that rule; this proves
+   * the rule it spells is the one the disks actually answer to.
+   */
+  const disk = runnerDataDiskNameFor({ app: 'boxlite', stage: 'dev', host: 'boxlite-dev-runner' })
+  assert.ok(
+    disk.startsWith(runnerDataDiskPrefix({ app: 'boxlite', stage: 'dev' })),
+    `${disk} must fall under the prefix the resize grant is bounded to`,
+  )
+})
+
+test('the expansion-failing alarm counts over a quarter-hour window on both clouds', () => {
+  /*
+   * The expansion loop is paced by the control plane's cron — at most one
+   * failure line per runner per round — so over the default one-minute window
+   * a single runner failing on every round never reaches the threshold. The
+   * design's own sentence is "≈15min 内 ≥3 次", which spells as one 900-second
+   * window and `{threshold: 3, periods: 1}`; the pressure alarm keeps the
+   * minute, because a critical heartbeat arrives every 30s and "any runner
+   * critical right now" is a now-question.
+   */
+  const expansion = (source: string, opener: string): string => {
+    const at = source.indexOf(opener)
+    assert.ok(at !== -1, `no ${opener} alarm found`)
+    // Wide enough to reach past the filter and the window comment to the call's tail.
+    return source.slice(at, at + 1400)
+  }
+  const gcp = expansion(sourceOf('alarms'), "resourceName: 'RunnerDiskExpansionFailingAlarm'")
+  assert.match(gcp, /windowSeconds: 900/, 'the GCP window must cover the stretch failures actually arrive in')
+
+  const aws = readFileSync(fileURLToPath(new URL('../stack/providers/aws/alarms.ts', import.meta.url)), 'utf8')
+  assert.match(
+    expansion(aws, "'RunnerDiskExpansionFailingAlarm'"),
+    /900/,
+    'the CloudWatch period must match the GCP window',
+  )
 })
 
 test('every host the policy names is a host the fleet created', () => {
