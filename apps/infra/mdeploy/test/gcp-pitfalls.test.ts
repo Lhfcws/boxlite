@@ -1948,3 +1948,74 @@ test('the proxy, the API and the runner read the same registries and the same ho
     new RegExp(`envconfig:"${REGISTRY_PROXY_HOST_VARIABLE}"`),
   )
 })
+
+/*
+ * The grant to grow a data disk and the disk it may grow are two spellings of
+ * one name, and the failure mode when they drift is the quiet one: a CEL
+ * prefix that matches nothing is no grant and no error — the first resize
+ * answers 403 hours after a deploy that looked green. So the condition and
+ * the env the runner reports from must both derive from the one function the
+ * disks were created under, and the test reads each out of its own block.
+ */
+test('the disk grant is derived from the names the disks are created under', () => {
+  const api = sourceOf('api')
+  const runners = sourceOf('runners')
+
+  // The resize binding is its own grant, matched inside its own block — the
+  // walk-out-of-the-block trap the volume grants' test records.
+  const grants = projectIamBlocks(api)
+  const grantNamed = (name: string): string => {
+    const found = grants.filter((block) => block.includes(name))
+    assert.equal(found.length, 1, `expected one ${name} grant, found ${found.length}`)
+    return found[0]
+  }
+  const resize = grantNamed('`ApiCapability${index}DiskResize`')
+  assert.match(
+    resize,
+    /expression: `resource\.type == "compute\.googleapis\.com\/Disk" && resource\.name\.startsWith\("projects\/\$\{project\}\/zones\/\$\{zone\}\/disks\/\$\{runnerDataDiskPrefix\(\{ app: \$app\.name, stage: \$app\.stage \}\)\}"\)`/,
+    'the CEL prefix must spell the one derivation, scoped to the disks the fleet creates',
+  )
+
+  // And the policy that tells each host its disk derives from the same
+  // identity — app, stage, project, zone — so a rename moves the grant and
+  // the report together, and neither spells the prefix a second time.
+  assert.match(
+    runners,
+    /dataDiskIdentity: \{\s*app: \$app\.name,\s*stage: \$app\.stage,/,
+    'the runner policy must carry the same app and stage identity the grant derives from',
+  )
+
+  // The role itself stays at the ceiling the design names: grow and read, and
+  // nothing that could delete, create or attach.
+  assert.match(api, /permissions: \['compute\.disks\.get', 'compute\.disks\.update'\]/)
+  assert.doesNotMatch(api, /'compute\.disks\.delete'/)
+  assert.doesNotMatch(api, /'compute\.disks\.create'/)
+  assert.doesNotMatch(api, /'compute\.disks\.setIamPolicy'/)
+})
+
+test('every host the policy names is a host the fleet created', () => {
+  // The fleet table is built from the same slots the instances are, so a
+  // policy naming a host outside the fleet would be a row no metadata name
+  // ever selects — and every runner would report no disk at all.
+  const runners = sourceOf('runners')
+  const policy = runners.slice(runners.indexOf('const unitEnvPolicy'), runners.indexOf('const scripts'))
+  assert.match(
+    policy,
+    /dataDiskIdentity: \{[^}]*hosts: assignments\.map\(\(\{ slot \}\) => slot\.nameTag\)/,
+    'the fleet table must be the fleet the instances were created from',
+  )
+
+  /*
+   * And the identity travels the same two channels the volume backend does:
+   * the boot script writes it for a new host, and the policy converges it
+   * onto a host whose boot script predates it. A stage-level key missing from
+   * the boot script would make every fresh host non-compliant forever, each
+   * deploy restarting its unit to the same missing line.
+   */
+  assert.match(runners, /GCP_PROJECT_ID: project,\s*GCP_ZONE: zone,/, 'the boot script must write the stage-level pair')
+  assert.match(
+    runners,
+    /RUNNER_DATA_DISK_NAME: runnerDataDiskNameFor\(\{ app: \$app\.name, stage: \$app\.stage, host: slot\.nameTag \}\)/,
+    'and the per-host name joins in the instance loop, derived from the one naming rule',
+  )
+})

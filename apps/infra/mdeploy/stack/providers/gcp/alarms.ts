@@ -179,4 +179,53 @@ export const gcpAlarmProvider =
       description: 'A registered runner has stopped answering the control plane',
       notificationChannels,
     })
+
+    /*
+     * Disk expansion failing, logged by the control plane at error level: a
+     * rate-limit refusal, an operation that FAILED, a grow whose filesystem
+     * never confirmed. The alarm is the only notice a quiet failure gets —
+     * the resize itself succeeds or silences, and neither reports anywhere.
+     *
+     * The attributes travel as pino-merged keys, so the event name and the
+     * result are dotted keys inside the JSON payload, quoted as the logging
+     * query language requires.
+     */
+    watch({
+      resourceName: 'RunnerDiskExpansionFailingAlarm',
+      project,
+      metricName: instanceFor({ app: $app.name, stage: $app.stage, artifact: 'runner-disk-expansion-failing' }),
+      resourceType: CLOUD_RUN,
+      filter: subjects.api.metricTarget.apply(
+        (service: string) =>
+          `resource.type="${CLOUD_RUN.logging}" AND resource.labels.service_name="${service}" ` +
+          'AND jsonPayload."event.name"="runner.disk_expansion" AND severity>=ERROR',
+      ),
+      threshold: request.runnersDiskExpansionFailing,
+      description: 'Runner data-disk expansions are failing',
+      notificationChannels,
+    })
+
+    /*
+     * A runner at critical disk pressure, logged by the control plane from
+     * every healthcheck that reports one — the stage before the expansion
+     * that was supposed to have caught it. Each critical runner contributes
+     * one line per heartbeat, so a count over one minute answers "is any
+     * runner critical right now", and the threshold is the fewest lines that
+     * can say yes.
+     */
+    watch({
+      resourceName: 'RunnerDiskPressureCriticalAlarm',
+      project,
+      metricName: instanceFor({ app: $app.name, stage: $app.stage, artifact: 'runner-disk-pressure-critical' }),
+      resourceType: CLOUD_RUN,
+      filter: subjects.api.metricTarget.apply(
+        (service: string) =>
+          `resource.type="${CLOUD_RUN.logging}" AND resource.labels.service_name="${service}" ` +
+          'AND jsonPayload."event.name"="runner.disk_pressure" ' +
+          'AND jsonPayload."disk.pressure_level"="critical"',
+      ),
+      threshold: request.runnersDiskPressureCritical,
+      description: 'A runner is at critical data-disk usage',
+      notificationChannels,
+    })
   }

@@ -63,4 +63,26 @@ export const awsAlarmProvider =
       statistic: 'Maximum',
       alarmDescription: 'A registered runner has stopped answering the control plane',
     })
+
+    /*
+     * Both disk alarms read counters the control plane embeds in its own log
+     * lines (`RunnerUnreachable`'s shape, and for the same reason): expansion
+     * failures and critical pressure happen on hosts the alarms cannot reach,
+     * so the API that hears about them is what publishes them. The metrics
+     * arrive with the API task; the alarm existing first is what keeps a
+     * failure discovered in staging from being one nobody was listening for.
+     */
+    alarm('RunnerDiskExpansionFailingAlarm', request.runnersDiskExpansionFailing, {
+      namespace: APPLICATION_NAMESPACE,
+      metricName: 'RunnerDiskExpansionFailing',
+      statistic: 'Sum',
+      alarmDescription: 'Runner data-disk expansions are failing',
+    })
+
+    alarm('RunnerDiskPressureCriticalAlarm', request.runnersDiskPressureCritical, {
+      namespace: APPLICATION_NAMESPACE,
+      metricName: 'RunnerDiskPressureCritical',
+      statistic: 'Sum',
+      alarmDescription: 'A runner is at critical data-disk usage',
+    })
   }
