@@ -193,7 +193,7 @@ func (o *RunnerDataDiskRef) UnmarshalJSON(data []byte) (err error) {
 	err = json.Unmarshal(data, &allProperties)
 
 	if err != nil {
-		return err
+		return err;
 	}
 
 	for _, requiredProperty := range requiredProperties {

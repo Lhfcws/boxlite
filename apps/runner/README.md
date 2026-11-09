@@ -662,7 +662,7 @@ last observed size:
 - larger: runs `resize2fs` on the device, which grows the mounted ext4
   filesystem online; the baseline moves only on success, so a failed
   resize retries next round;
-- smaller: treated as unchanged — the disk cannot shrink;
+- smaller: not skipped — a smaller device still runs resize2fs, which fails and retries each round (disks cannot shrink via GCP; a disk swap is caught by the API-side stale-ref alert);
 - missing (AWS, local, or non-Linux hosts): skip, logged once at debug;
   disk resize is a GCP-only behavior.
 

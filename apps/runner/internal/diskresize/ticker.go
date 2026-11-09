@@ -1,20 +1,12 @@
-/*
- * Copyright 2025 BoxLite AI (originally Daytona Platforms Inc.
- * SPDX-License-Identifier: AGPL-3.0
- */
+// Copyright 2026 BoxLite AI
+// SPDX-License-Identifier: AGPL-3.0
 
-// Package diskresize grows the ext4 filesystem that backs the runner data
-// disk when the block device underneath it gets larger. GCP's disks.update
-// only enlarges the device; the filesystem must be resized separately, which
-// resize2fs does online on a mounted ext4 filesystem. The runner runs as root,
-// so no privilege escalation is involved.
 package diskresize
 
 import (
 	"context"
 	"errors"
 	"log/slog"
-	"sync"
 	"time"
 )
 
@@ -50,7 +42,6 @@ type Ticker struct {
 	readDeviceSize func(ctx context.Context, devicePath string) (uint64, error)
 	runResize      func(ctx context.Context, devicePath string) error
 
-	mutex         sync.Mutex
 	lastDevBytes  *uint64
 	failures      int
 	missingLogged bool
@@ -129,18 +120,13 @@ func (t *Ticker) tick(ctx context.Context) {
 	}
 
 	if err := t.runResize(ctx, t.devicePath); err != nil {
-		t.mutex.Lock()
 		t.failures++
-		failures := t.failures
-		t.mutex.Unlock()
-		t.log.WarnContext(ctx, "Failed to resize data disk filesystem; will retry next round", "event", "runner.disk.resize", "device", t.devicePath, "deviceBytes", devBytes, "failures", failures, "error", err)
+		t.log.WarnContext(ctx, "Failed to resize data disk filesystem; will retry next round", "event", "runner.disk.resize", "device", t.devicePath, "deviceBytes", devBytes, "failures", t.failures, "error", err)
 		return
 	}
 
-	t.mutex.Lock()
 	bytes := devBytes
 	t.lastDevBytes = &bytes
-	t.mutex.Unlock()
 
 	t.log.InfoContext(ctx, "Data disk filesystem resized", "event", "runner.disk.resize", "device", t.devicePath, "deviceBytes", devBytes)
 }
@@ -148,8 +134,6 @@ func (t *Ticker) tick(ctx context.Context) {
 // unchanged reports whether the observed size equals the stored baseline, so
 // the round can be skipped without running resize2fs.
 func (t *Ticker) unchanged(devBytes uint64) bool {
-	t.mutex.Lock()
-	defer t.mutex.Unlock()
 	return t.lastDevBytes != nil && *t.lastDevBytes == devBytes
 }
 
@@ -157,19 +141,9 @@ func (t *Ticker) unchanged(devBytes uint64) bool {
 // AWS and local runners never have the device, so per-tick logging would only
 // repeat the same fact every interval.
 func (t *Ticker) logOnceMissing(ctx context.Context) {
-	t.mutex.Lock()
-	defer t.mutex.Unlock()
 	if t.missingLogged {
 		return
 	}
 	t.missingLogged = true
 	t.log.DebugContext(ctx, "Data disk device not found; disk resize is disabled on this host", "device", t.devicePath)
-}
-
-// Failures reports how many resize2fs invocations have failed since process
-// start, for observability hooks that surface runner-side resize trouble.
-func (t *Ticker) Failures() int {
-	t.mutex.Lock()
-	defer t.mutex.Unlock()
-	return t.failures
 }
