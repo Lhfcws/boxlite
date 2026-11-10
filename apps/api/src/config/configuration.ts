@@ -456,8 +456,10 @@ export function runnerDiskConfig(env: NodeJS.ProcessEnv = process.env) {
       // Master switch; the gray-release lever. Off means the controller,
       // sampling and unschedulable marks all stay dormant.
       enabled: env.RUNNER_DISK_EXPANSION_ENABLED === 'true',
-      // Expansion ceiling. Unset falls back to expandLimitGiB, then diskGiB;
-      // enabling expansion without any cap is surfaced as a config gap.
+      // Expansion ceiling. Unset resolves at evaluation time to the admission
+      // expand limit, then to a per-runner default of twice the disk's current
+      // size (clamped to the Hyperdisk Balanced maximum) — ENABLED alone turns
+      // the feature on with a sane ceiling.
       capGiB: env.RUNNER_DISK_EXPANSION_CAP_GIB?.trim()
         ? requiredCount(env.RUNNER_DISK_EXPANSION_CAP_GIB, 0, 'RUNNER_DISK_EXPANSION_CAP_GIB')
         : undefined,

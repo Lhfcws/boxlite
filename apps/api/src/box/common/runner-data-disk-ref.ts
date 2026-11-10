@@ -22,3 +22,15 @@ export interface RunnerDataDiskRef {
 export function isGcpDataDiskRef(ref: RunnerDataDiskRef | null | undefined): ref is RunnerDataDiskRef {
   return !!ref && ref.provider === 'gcp' && !!ref.project && !!ref.zone && !!ref.diskName
 }
+
+/**
+ * Whether the runner's data disk supports online capacity growth. The
+ * capability rides on the provider: a complete GCP ref is the one expandable
+ * shape today, and other providers would join here rather than in the
+ * expansion controller. This gate runs ahead of the gray-release switch —
+ * when it answers false, no amount of enabling matters, the disk simply
+ * cannot grow.
+ */
+export function isDiskCapacityExpandable(ref: RunnerDataDiskRef | null | undefined): ref is RunnerDataDiskRef {
+  return isGcpDataDiskRef(ref)
+}

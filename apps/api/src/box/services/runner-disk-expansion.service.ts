@@ -15,7 +15,7 @@ import { RunnerDiskUsageSample } from '../entities/runner-disk-usage-sample.enti
 import { RunnerState } from '../enums/runner-state.enum'
 import { RunnerUnschedulableReason } from '../enums/runner-unschedulable-reason.enum'
 import { RunnerDiskExpansionStatus } from '../enums/runner-disk-expansion-status.enum'
-import { isGcpDataDiskRef, RunnerDataDiskRef } from '../common/runner-data-disk-ref'
+import { isDiskCapacityExpandable, RunnerDataDiskRef } from '../common/runner-data-disk-ref'
 import { RedisLockProvider, withRedisLockLease } from '../common/redis-lock.provider'
 import { TypedConfigService } from '../../config/typed-config.service'
 import { LogExecution } from '../../common/decorators/log-execution.decorator'
@@ -42,6 +42,9 @@ export const MAX_PATCHES_PER_ROUND = 20
  * confirmation times out loudly instead of passing silently.
  */
 export const CONFIRM_TOLERANCE_RATIO = 0.975
+
+/** Relative cap default multiplier: one default-ceiling generation per 100% growth. */
+export const CAP_DEFAULT_MULTIPLIER = 2
 
 const CRON_NAME = 'runner-disk-expansion'
 /** The lease key serializing the round across API instances; exported for the integration spec. */
@@ -133,6 +136,28 @@ export function shouldTrigger(
   triggerPercentage: number,
 ): boolean {
   return freeGiB < Math.max((capacityGiB * triggerPercentage) / 100, headroomGiB)
+}
+
+/** Hyperdisk Balanced's ceiling per GCP docs (64 TiB); the relative cap default clamps to it. */
+export const HYPERDISK_BALANCED_MAX_GIB = 65536
+
+/**
+ * Cap applied when neither RUNNER_DISK_EXPANSION_CAP_GIB nor the admission
+ * expand limit is configured: twice the disk's current size, clamped to the
+ * Hyperdisk ceiling, so RUNNER_DISK_EXPANSION_ENABLED alone turns the feature
+ * on with a sane ceiling instead of a configuration-gap dead end. Undefined
+ * only for a nonsensical diskGiB (0 or less), which the uncapped gauge then
+ * surfaces as the defensive counter it is.
+ */
+export function resolveEffectiveCapGiB(
+  capGiB: number | undefined,
+  expandLimitGiB: number | undefined,
+  diskGiB: number,
+): number | undefined {
+  const explicit = resolveCapGiB(capGiB, expandLimitGiB)
+  if (explicit !== undefined) return explicit
+  if (!Number.isFinite(diskGiB) || diskGiB <= 0) return undefined
+  return Math.min(HYPERDISK_BALANCED_MAX_GIB, diskGiB * CAP_DEFAULT_MULTIPLIER)
 }
 
 /** New size: capacity plus the larger of headroom and the step share, clamped to the cap, rounded up to whole GiB. */
@@ -240,7 +265,7 @@ export class RunnerDiskExpansionService {
           where: { id: row.runnerId },
           select: ['id', 'diskGiB', 'dataDiskRef'],
         })
-        if (!runner || !isGcpDataDiskRef(runner.dataDiskRef)) {
+        if (!runner || !isDiskCapacityExpandable(runner.dataDiskRef)) {
           // Runner gone, or its disk identity changed under the pending attempt.
           // Wait out the confirm timeout rather than failing fast: the identity
           // may arrive with the next heartbeat.
@@ -324,7 +349,7 @@ export class RunnerDiskExpansionService {
     const retentionCutoff = new Date(now.getTime() - expansion.sampleRetentionHours * 3600_000)
 
     const ready = await this.runnerRepository.find({ where: { state: RunnerState.READY } })
-    this.gaugeValues.missingRef = ready.filter((r) => !isGcpDataDiskRef(r.dataDiskRef)).length
+    this.gaugeValues.missingRef = ready.filter((r) => !isDiskCapacityExpandable(r.dataDiskRef)).length
     this.gaugeValues.uncapped = 0
 
     let patchesThisRound = 0
@@ -334,7 +359,7 @@ export class RunnerDiskExpansionService {
         break
       }
       const dataDiskRef = runner.dataDiskRef
-      if (!isGcpDataDiskRef(dataDiskRef)) {
+      if (!isDiskCapacityExpandable(dataDiskRef)) {
         continue
       }
       try {
@@ -367,7 +392,9 @@ export class RunnerDiskExpansionService {
   ): Promise<boolean> {
     const { expansion, expandLimitGiB, windowMs, retentionCutoff, now } = ctx
     const budgetWindowStart = new Date(now.getTime() - expansion.growthWindowHours * 3600_000)
-    const cap = resolveCapGiB(expansion.capGiB, expandLimitGiB)
+    // Lift and cap gates share the effective cap: explicit cap, admission
+    // limit, or the per-runner relative default — never an undefined dead end.
+    const cap = resolveEffectiveCapGiB(expansion.capGiB, expandLimitGiB, runner.diskGiB)
 
     // 0) Lift first, ahead of every skip: a recovered runner returns to the
     // pool as soon as usage, budget, and cap allow, even if this round will
@@ -409,7 +436,9 @@ export class RunnerDiskExpansionService {
       return false
     }
 
-    // 4) Cap: unset cap is a configuration gap — visible via gauge, no resize.
+    // 4) Cap: the effective cap resolves to the relative default when unset,
+    // so this branch is defensive — a nonsensical diskGiB (0 or less from a
+    // broken healthcheck) is the only way in, and the gauge counts it.
     if (cap === undefined) {
       this.gaugeValues.uncapped += 1
       return false

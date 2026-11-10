@@ -18,12 +18,14 @@ import { TypedConfigService } from '../../config/typed-config.service'
 import {
   CONFIRM_TOLERANCE_RATIO,
   EXPANSION_ERROR,
+  HYPERDISK_BALANCED_MAX_GIB,
   MAX_PATCHES_PER_ROUND,
   RunnerDiskExpansionService,
   headroomGiB,
   maxGrowthWithinWindow,
   nextSizeGiB,
   resolveCapGiB,
+  resolveEffectiveCapGiB,
   sampleBucketAt,
   shouldTrigger,
 } from './runner-disk-expansion.service'
@@ -90,6 +92,19 @@ describe('water-level planning functions', () => {
     expect(resolveCapGiB(4096, 2048)).toBe(4096)
     expect(resolveCapGiB(undefined, 2048)).toBe(2048)
     expect(resolveCapGiB(undefined, undefined)).toBeUndefined()
+  })
+
+  it('resolveEffectiveCapGiB prefers explicit caps, then defaults to twice the disk size', () => {
+    // Explicit cap and admission limit keep their precedence over the default.
+    expect(resolveEffectiveCapGiB(4096, 2048, 200)).toBe(4096)
+    expect(resolveEffectiveCapGiB(undefined, 2048, 200)).toBe(2048)
+    // No explicit cap: twice the current size.
+    expect(resolveEffectiveCapGiB(undefined, undefined, 200)).toBe(400)
+    // Clamped to the Hyperdisk ceiling for large disks.
+    expect(resolveEffectiveCapGiB(undefined, undefined, 100_000)).toBe(HYPERDISK_BALANCED_MAX_GIB)
+    // A nonsensical disk size yields no cap — the uncapped gauge's only way in.
+    expect(resolveEffectiveCapGiB(undefined, undefined, 0)).toBeUndefined()
+    expect(resolveEffectiveCapGiB(undefined, undefined, -5)).toBeUndefined()
   })
 
   describe('shouldTrigger', () => {
@@ -349,14 +364,27 @@ describe('RunnerDiskExpansionService round', () => {
   })
 
   describe('cap', () => {
-    it('skips and gauges when no cap is configured at all', async () => {
+    it('falls back to twice the disk size when no cap is configured', async () => {
       const { service, gcpDiskClient, expansions } = makeService({ expansion: { capGiB: undefined } })
 
       await service.evaluateAndConfirm()
 
+      // Default ceiling = 2 × 200 = 400; the natural step (250) fits under it,
+      // so the expansion proceeds with the sane relative default.
+      expect(gcpDiskClient.resizeDisk).toHaveBeenCalledWith(ref, 250)
+      expect(expansions.insert).toHaveBeenCalledWith(
+        expect.objectContaining({ fromGiB: 200, toGiB: 250, accepted: true }),
+      )
+      expect((service as unknown as { gaugeValues: { uncapped: number } }).gaugeValues.uncapped).toBe(0)
+    })
+
+    it('skips and gauges only for a nonsensical disk size', async () => {
+      const runner = gcpRunner({ diskGiB: 0 })
+      const { service, gcpDiskClient } = makeService({ readyRunners: [runner], expansion: { capGiB: undefined } })
+
+      await service.evaluateAndConfirm()
+
       expect(gcpDiskClient.resizeDisk).not.toHaveBeenCalled()
-      expect(expansions.insert).not.toHaveBeenCalled()
-      // The configuration gap must be visible, not silent.
       expect((service as unknown as { gaugeValues: { uncapped: number } }).gaugeValues.uncapped).toBe(1)
     })
 
