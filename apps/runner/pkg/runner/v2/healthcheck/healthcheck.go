@@ -34,6 +34,10 @@ type HealthcheckServiceConfig struct {
 	GCPProjectID       string
 	GCPZone            string
 	RunnerDataDiskName string
+	// RunnerDataDiskType names the backend behind the identity (optional; the
+	// API assumes hyperdisk_balanced when absent). Empty on hosts whose infra
+	// predates the field.
+	RunnerDataDiskType string
 }
 
 type Service struct {
@@ -70,6 +74,7 @@ func NewService(cfg *HealthcheckServiceConfig) (*Service, error) {
 	var dataDiskRef *apiclient.RunnerDataDiskRef
 	if cfg.GCPProjectID != "" && cfg.GCPZone != "" && cfg.RunnerDataDiskName != "" {
 		dataDiskRef = apiclient.NewRunnerDataDiskRef("gcp", cfg.GCPProjectID, cfg.GCPZone, cfg.RunnerDataDiskName)
+		dataDiskRef.SetDiskType(cfg.RunnerDataDiskType)
 	}
 
 	return &Service{

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: AGPL-3.0
  */
 
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable, Logger, Optional } from '@nestjs/common'
 import { RunnerDataDiskRef } from '../common/runner-data-disk-ref'
 
 /** GCP rejected the resize with 400 — for this API's budget that means the per-disk resize rate limit. */
@@ -62,7 +62,7 @@ export class GcpDiskClient implements GcpDiskClientLike {
   private disks?: DisksLike
   private zoneOperations?: ZoneOperationsLike
 
-  constructor(transport?: { disks?: DisksLike; zoneOperations?: ZoneOperationsLike }) {
+  constructor(@Optional() transport?: { disks?: DisksLike; zoneOperations?: ZoneOperationsLike }) {
     this.disks = transport?.disks
     this.zoneOperations = transport?.zoneOperations
   }

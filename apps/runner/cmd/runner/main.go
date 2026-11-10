@@ -253,6 +253,7 @@ func run() int {
 			GCPProjectID:       cfg.GCPProjectID,
 			GCPZone:            cfg.GCPZone,
 			RunnerDataDiskName: cfg.RunnerDataDiskName,
+			RunnerDataDiskType: cfg.RunnerDataDiskType,
 		})
 		if err != nil {
 			logger.Error("Failed to create healthcheck service", "error", err)

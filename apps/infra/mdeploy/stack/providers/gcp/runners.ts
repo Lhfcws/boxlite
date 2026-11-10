@@ -438,6 +438,10 @@ udevadm trigger --name-match=kvm || true`,
              * here rather than spelled.
              */
             RUNNER_DATA_DISK_NAME: runnerDataDiskNameFor({ app: $app.name, stage: $app.stage, host: slot.nameTag }),
+            // Derived from the disk the stack provisions, never spelled: the
+            // API's expandable-type set keys on this exact value, so a rename
+            // here flows through instead of silently mismatching.
+            RUNNER_DATA_DISK_TYPE: DISK_TYPE.replace(/-/g, '_'),
             // Where this host presents its own key to pull a private image.
             // Converged below as well, for the hosts booted before it existed.
             ...(proxyHost ? { [REGISTRY_PROXY_HOST_VARIABLE]: proxyHost as string } : {}),

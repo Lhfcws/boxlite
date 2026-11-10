@@ -17,6 +17,13 @@ export interface RunnerDataDiskRef {
   zone: string
   /** Disk name inside the project/zone, not a full resource path. */
   diskName: string
+  /**
+   * The backend behind the identity (`hyperdisk_balanced`, `filestore`, ...).
+   * Optional: binaries predating the field never send it, and the API then
+   * assumes hyperdisk_balanced — the only type infra provisions today — so a
+   * rolling upgrade never drops a live runner out of expansion coverage.
+   */
+  diskType?: string
 }
 
 export function isGcpDataDiskRef(ref: RunnerDataDiskRef | null | undefined): ref is RunnerDataDiskRef {
@@ -24,13 +31,20 @@ export function isGcpDataDiskRef(ref: RunnerDataDiskRef | null | undefined): ref
 }
 
 /**
- * Whether the runner's data disk supports online capacity growth. The
- * capability rides on the provider: a complete GCP ref is the one expandable
- * shape today, and other providers would join here rather than in the
- * expansion controller. This gate runs ahead of the gray-release switch —
- * when it answers false, no amount of enabling matters, the disk simply
- * cannot grow.
+ * Whether the runner's data disk supports online capacity growth through the
+ * block-disk expansion controller. The capability rides on the disk type, not
+ * just the provider: a GCP Filestore instance shares the provider but has no
+ * block device and a different resize path entirely, so it is excluded even
+ * though its ref parses the same shape. The gate runs ahead of the gray
+ * release switch — when it answers false, no amount of enabling matters.
  */
+const EXPANDABLE_DISK_TYPES = new Set(['hyperdisk_balanced'])
+
 export function isDiskCapacityExpandable(ref: RunnerDataDiskRef | null | undefined): ref is RunnerDataDiskRef {
-  return isGcpDataDiskRef(ref)
+  if (!isGcpDataDiskRef(ref)) return false
+  // `||` on purpose: the Go client serializes an unset optional string as an
+  // empty JSON string, so `??` would keep that empty value and wrongly drop a
+  // live runner out of expansion coverage.
+  const diskType = ref.diskType || 'hyperdisk_balanced'
+  return EXPANDABLE_DISK_TYPES.has(diskType)
 }

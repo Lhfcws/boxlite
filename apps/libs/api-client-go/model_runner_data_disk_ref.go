@@ -19,7 +19,7 @@ import (
 // checks if the RunnerDataDiskRef type satisfies the MappedNullable interface at compile time
 var _ MappedNullable = &RunnerDataDiskRef{}
 
-// RunnerDataDiskRef Cloud identity of the runner data disk. Disk type is intentionally omitted: the cloud API addresses a disk by name alone, the actual type (persistent disk vs hyperdisk) is derivable via compute.disks.get when monitoring needs it, and a future non-disk backend would need a different schema rather than an extra string field.
+// RunnerDataDiskRef Cloud identity of the runner data disk. diskType names the backend so the API can tell expandable block disks from backends with a different resize path (e.g. Filestore); runners predating the field are treated as hyperdisk_balanced, the only type infra provisions today.
 type RunnerDataDiskRef struct {
 	// Cloud provider of the data disk
 	Provider string `json:"provider"`
@@ -28,7 +28,9 @@ type RunnerDataDiskRef struct {
 	// Cloud zone the data disk lives in
 	Zone string `json:"zone"`
 	// Name of the data disk, as the cloud API addresses it
-	DiskName             string `json:"diskName"`
+	DiskName string `json:"diskName"`
+	// Backend behind the identity (hyperdisk_balanced, filestore, ...). Omitted by runner binaries predating the field; the API then assumes hyperdisk_balanced, the only data disk infra provisions today.
+	DiskType             string `json:"diskType,omitempty"`
 	AdditionalProperties map[string]interface{}
 }
 
@@ -155,6 +157,22 @@ func (o *RunnerDataDiskRef) SetDiskName(v string) {
 	o.DiskName = v
 }
 
+// Backend behind the identity (hyperdisk_balanced, filestore, ...). Omitted by runner binaries predating the field; the API then assumes hyperdisk_balanced, the only data disk infra provisions today.
+// GetDiskType returns the DiskType field value
+func (o *RunnerDataDiskRef) GetDiskType() string {
+	if o == nil {
+		var ret string
+		return ret
+	}
+
+	return o.DiskType
+}
+
+// SetDiskType sets field value
+func (o *RunnerDataDiskRef) SetDiskType(v string) {
+	o.DiskType = v
+}
+
 func (o RunnerDataDiskRef) MarshalJSON() ([]byte, error) {
 	toSerialize, err := o.ToMap()
 	if err != nil {
@@ -169,6 +187,7 @@ func (o RunnerDataDiskRef) ToMap() (map[string]interface{}, error) {
 	toSerialize["project"] = o.Project
 	toSerialize["zone"] = o.Zone
 	toSerialize["diskName"] = o.DiskName
+	toSerialize["diskType"] = o.DiskType
 
 	for key, value := range o.AdditionalProperties {
 		toSerialize[key] = value
@@ -219,6 +238,7 @@ func (o *RunnerDataDiskRef) UnmarshalJSON(data []byte) (err error) {
 		delete(additionalProperties, "project")
 		delete(additionalProperties, "zone")
 		delete(additionalProperties, "diskName")
+		delete(additionalProperties, "diskType")
 		o.AdditionalProperties = additionalProperties
 	}
 

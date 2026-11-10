@@ -14,7 +14,7 @@
 
 
 /**
- * Cloud identity of the runner data disk. Disk type is intentionally omitted: the cloud API addresses a disk by name alone, the actual type (persistent disk vs hyperdisk) is derivable via compute.disks.get when monitoring needs it, and a future non-disk backend would need a different schema rather than an extra string field.
+ * Cloud identity of the runner data disk. diskType names the backend so the API can tell expandable block disks from backends with a different resize path (e.g. Filestore); runners predating the field are treated as hyperdisk_balanced, the only type infra provisions today.
  */
 export interface RunnerDataDiskRef {
     /**
@@ -33,4 +33,8 @@ export interface RunnerDataDiskRef {
      * Name of the data disk, as the cloud API addresses it
      */
     'diskName': string;
+    /**
+     * Backend behind the identity (hyperdisk_balanced, filestore, ...). Omitted by runner binaries predating the field; the API then assumes hyperdisk_balanced, the only data disk infra provisions today.
+     */
+    'diskType'?: string;
 }

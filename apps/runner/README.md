@@ -717,7 +717,13 @@ three `GCP_PROJECT_ID`, `GCP_ZONE` and `RUNNER_DATA_DISK_NAME` env
 keys, every healthcheck includes `dataDiskRef` with provider, project,
 zone and disk name; any missing key omits the whole field, so AWS and
 local runners never send a partial identity. The API's disk-expansion
-controller uses this ref to address the right disk.
+controller uses this ref to address the right disk. Infra also injects
+`RUNNER_DATA_DISK_TYPE` (derived from the provisioned disk type, e.g.
+`hyperdisk_balanced`); the ref carries it as `diskType` so the API can
+tell expandable block disks from backends with a different resize path
+(e.g. Filestore). The key is optional — binaries predating it, and
+hosts whose infra predates it, are treated as `hyperdisk_balanced` by
+the API, which matches everything infra provisions today.
 
 ---
 

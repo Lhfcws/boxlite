@@ -73,6 +73,11 @@ type Config struct {
 	// projects/…/zones/…/disks/<name>) as provisioned by infra; the API's
 	// disk-expansion controller targets this exact resource.
 	RunnerDataDiskName string `envconfig:"RUNNER_DATA_DISK_NAME"`
+	// RunnerDataDiskType names the backend behind the identity
+	// (hyperdisk_balanced today; a Filestore share would report differently).
+	// Optional: the API assumes hyperdisk_balanced when absent, matching
+	// everything infra provisions today.
+	RunnerDataDiskType string `envconfig:"RUNNER_DATA_DISK_TYPE"`
 	// DataDiskDevice overrides the block device path the resize ticker reads
 	// (default /dev/disk/by-id/google-boxlite-data). Test/local-only: prod
 	// never sets it.

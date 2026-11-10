@@ -46,10 +46,19 @@ func TestServiceDataDiskRefAssemblyContract(t *testing.T) {
 		project  string
 		zone     string
 		diskName string
+		diskType string
 		wantSent bool
 	}{
 		{
 			name:     "all three env values present sends the complete ref",
+			project:  "boxlite-prod-project",
+			zone:     "us-central1-a",
+			diskName: "boxlite-runner-data-host-1",
+			diskType: "hyperdisk_balanced",
+			wantSent: true,
+		},
+		{
+			name:     "unset disk type serializes as an empty string on the wire",
 			project:  "boxlite-prod-project",
 			zone:     "us-central1-a",
 			diskName: "boxlite-runner-data-host-1",
@@ -88,6 +97,7 @@ func TestServiceDataDiskRefAssemblyContract(t *testing.T) {
 				GCPProjectID:       tc.project,
 				GCPZone:            tc.zone,
 				RunnerDataDiskName: tc.diskName,
+				RunnerDataDiskType: tc.diskType,
 			})
 			if err != nil {
 				t.Fatalf("NewService failed: %v", err)
@@ -114,6 +124,9 @@ func TestServiceDataDiskRefAssemblyContract(t *testing.T) {
 				if got := service.dataDiskRef.GetDiskName(); got != tc.diskName {
 					t.Fatalf("diskName = %q, want %q", got, tc.diskName)
 				}
+				if got := service.dataDiskRef.GetDiskType(); got != tc.diskType {
+					t.Fatalf("diskType = %q, want %q", got, tc.diskType)
+				}
 			}
 
 			// Wire assertions through the production request path.
@@ -137,7 +150,7 @@ func TestServiceDataDiskRefAssemblyContract(t *testing.T) {
 			if !ok {
 				t.Fatalf("dataDiskRef is not an object: %v", ref)
 			}
-			for _, want := range []string{"provider", "project", "zone", "diskName"} {
+			for _, want := range []string{"provider", "project", "zone", "diskName", "diskType"} {
 				if _, ok := m[want]; !ok {
 					t.Fatalf("dataDiskRef missing %q: %v", want, m)
 				}
@@ -147,6 +160,9 @@ func TestServiceDataDiskRefAssemblyContract(t *testing.T) {
 			}
 			if m["diskName"] != tc.diskName {
 				t.Fatalf("diskName = %v, want %q", m["diskName"], tc.diskName)
+			}
+			if m["diskType"] != tc.diskType {
+				t.Fatalf("diskType = %v, want %q", m["diskType"], tc.diskType)
 			}
 		})
 	}

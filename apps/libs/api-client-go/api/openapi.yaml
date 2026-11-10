@@ -7371,7 +7371,7 @@ components:
       - serviceName
       type: object
     RunnerDataDiskRef:
-      description: 'Cloud identity of the runner data disk. Disk type is intentionally omitted: the cloud API addresses a disk by name alone, the actual type (persistent disk vs hyperdisk) is derivable via compute.disks.get when monitoring needs it, and a future non-disk backend would need a different schema rather than an extra string field.'
+      description: 'Cloud identity of the runner data disk. diskType names the backend so the API can tell expandable block disks from backends with a different resize path (e.g. Filestore); runners predating the field are treated as hyperdisk_balanced, the only type infra provisions today.'
       example:
         provider: gcp
         project: boxlite-prod-project
@@ -7393,6 +7393,10 @@ components:
         diskName:
           description: Name of the data disk, as the cloud API addresses it
           example: boxlite-runner-data-host-1
+          type: string
+        diskType:
+          description: Backend behind the identity (hyperdisk_balanced, filestore, ...). Omitted by runner binaries predating the field; the API then assumes hyperdisk_balanced, the only data disk infra provisions today.
+          example: hyperdisk_balanced
           type: string
       required:
       - diskName
